@@ -20,6 +20,10 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # The toolchain line of go.mod selects the Go release with the
+      # current security fixes of the standard library.
+      - name: Show the Go version
+        run: go version
       - name: Vet
         run: go vet ./...
       - name: Test
@@ -36,3 +40,6 @@ jobs:
       - name: Check the plugin script
         if: runner.os == 'Linux'
         run: sh -n scripts/fetch-binary.sh
+      - name: Check for known vulnerabilities
+        if: runner.os == 'Linux'
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

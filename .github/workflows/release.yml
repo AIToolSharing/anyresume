@@ -25,8 +25,12 @@ jobs:
           grep -q "^version = \"$v\"$" herdr-plugin.toml
           test "$(grep -c "releases/download/v$v/" herdr-plugin.toml)" -eq 1
           grep -q "fetch-binary.sh\", \"$v\"" herdr-plugin.toml
+      - name: Show the Go version
+        run: go version
       - name: Test
         run: go test -count=1 ./...
+      - name: Check for known vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
