@@ -112,6 +112,28 @@ func (e *env) findRunning(snap herdr.Snapshot, id string) (string, bool) {
 	return "", false
 }
 
+// argvSessions returns the arguments of the Claude Code processes in herdr
+// panes. A copy that a pane resumed with --fork-session has the ID of the
+// original session there.
+func (e *env) argvSessions(snap herdr.Snapshot) map[string]bool {
+	ids := map[string]bool{}
+	for _, p := range snap.Panes {
+		if p.Agent != "claude" {
+			continue
+		}
+		info, err := e.herdr.ProcessInfo(p.ID)
+		if err != nil {
+			continue
+		}
+		for _, f := range info.Foreground {
+			for _, a := range f.Argv {
+				ids[a] = true
+			}
+		}
+	}
+	return ids
+}
+
 // openInHerdr focuses the pane that runs s, or resumes s in its imported
 // tab, or opens s in a new tab of the workspace "claude chats".
 func (e *env) openInHerdr(s session.Session) error {
@@ -192,11 +214,15 @@ type importStep struct {
 }
 
 // planImport decides what "import" does for each session. A session that
-// runs in a herdr pane needs nothing. A session with an imported tab gets
-// its resume command typed again. Every other session gets a new tab,
-// unless refresh is set.
-func planImport(sessions []session.Session, st state, snap herdr.Snapshot, refresh bool) []importStep {
+// runs in a herdr pane needs nothing: herdr reports its ID, or it is in
+// inPanes, the arguments of the Claude Code processes in herdr panes. A
+// session with an imported tab gets its resume command typed again. Every
+// other session gets a new tab, unless refresh is set.
+func planImport(sessions []session.Session, st state, snap herdr.Snapshot, inPanes map[string]bool, refresh bool) []importStep {
 	running := map[string]bool{}
+	for id := range inPanes {
+		running[id] = true
+	}
 	for _, p := range snap.Panes {
 		if p.AgentSession != nil {
 			running[p.AgentSession.Value] = true
@@ -247,7 +273,7 @@ func (e *env) importTabs(args []string) error {
 
 	var made, pending []importStep
 	stop := ""
-	for _, step := range planImport(sessions, st, snap, *refresh) {
+	for _, step := range planImport(sessions, st, snap, e.argvSessions(snap), *refresh) {
 		if step.kind == stepRetype {
 			pending = append(pending, step)
 			continue
@@ -318,17 +344,45 @@ func (e *env) importTabs(args []string) error {
 type retypeResult int
 
 const (
-	// typedCommand: the shell waited at an empty prompt, and retype typed
-	// the resume command.
+	// typedCommand: retype typed the resume command.
 	typedCommand retypeResult = iota
 	// notReady: the pane shows no text yet. Its shell is still starting.
 	notReady
-	// skipped: a program runs in the pane, or the prompt has text on it.
+	// skipped: a program runs in the pane, or the prompt has other text
+	// on it, or the prompt already has the current resume command.
 	skipped
 )
 
+type promptAction int
+
+const (
+	typeCommand    promptAction = iota // the prompt is empty
+	replaceCommand                     // the prompt has an old resume command
+	waitForShell                       // the pane shows no text yet
+	leaveAlone                         // other text, or the current command
+)
+
+// promptActionFor decides what retype does with the text at the end of an
+// imported tab. cmd is the current resume command for the session id. An
+// old resume command, for example one with the path of an earlier plugin
+// install, ends with the same " resume <id>".
+func promptActionFor(text, id, cmd string) promptAction {
+	text = strings.TrimRight(text, " \t\r\n")
+	switch {
+	case text == "":
+		return waitForShell
+	case promptRE.MatchString(text):
+		return typeCommand
+	case strings.HasSuffix(text, cmd):
+		return leaveAlone
+	case strings.HasSuffix(text, " resume "+id):
+		return replaceCommand
+	}
+	return leaveAlone
+}
+
 // retype types the resume command into an imported tab when its shell waits
-// at an empty prompt.
+// at an empty prompt, or when the prompt has an old resume command.
 func (e *env) retype(step importStep) (retypeResult, error) {
 	info, err := e.herdr.ProcessInfo(step.tab.Pane)
 	if err != nil || !info.Idle() {
@@ -338,16 +392,20 @@ func (e *env) retype(step importStep) (retypeResult, error) {
 	if err != nil {
 		return skipped, nil
 	}
-	text = strings.TrimRight(text, " \t\r\n")
-	if text == "" {
-		return notReady, nil
-	}
-	if !promptRE.MatchString(text) {
-		return skipped, nil
-	}
 	cmd, err := resumeCommand(step.session.ID)
 	if err != nil {
 		return skipped, err
 	}
-	return typedCommand, e.herdr.SendText(step.tab.Pane, cmd)
+	switch promptActionFor(text, step.session.ID, cmd) {
+	case waitForShell:
+		return notReady, nil
+	case replaceCommand:
+		if err := e.herdr.SendKeys(step.tab.Pane, clearLineKey); err != nil {
+			return skipped, err
+		}
+		fallthrough
+	case typeCommand:
+		return typedCommand, e.herdr.SendText(step.tab.Pane, cmd)
+	}
+	return skipped, nil
 }

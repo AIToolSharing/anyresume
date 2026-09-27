@@ -95,6 +95,50 @@ func TestPromptRE(t *testing.T) {
 	}
 }
 
+func TestPromptActionFor(t *testing.T) {
+	id := "00089cd3-6588-4ee5-8f8e-f388a5bf6f10"
+	cmd := `C:\Users\A~1\plugins\new\bin\anyresume.exe resume ` + id
+	cases := []struct {
+		text string
+		want promptAction
+	}{
+		{"", waitForShell},
+		{"\r\n  \n", waitForShell},
+		{`C:\work>`, typeCommand},
+		{"C:\\work>\r\n", typeCommand},
+		{`C:\work>` + cmd, leaveAlone},
+		{`C:\work>C:\Users\A~1\plugins\old\bin\anyresume.exe resume ` + id, replaceCommand},
+		{`C:\work>dir`, leaveAlone},
+		{`C:\work>anyresume.exe resume 11111111-6588-4ee5-8f8e-f388a5bf6f10`, leaveAlone},
+	}
+	for _, c := range cases {
+		if got := promptActionFor(c.text, id, cmd); got != c.want {
+			t.Errorf("promptActionFor(%q) = %v, want %v", c.text, got, c.want)
+		}
+	}
+}
+
+// TestPromptActionReplacesOnlyOldCommands checks any prompt and any old
+// program path: an old resume command for the session is replaced, and the
+// current one stays.
+func TestPromptActionReplacesOnlyOldCommands(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		id := rapid.StringMatching(`[0-9a-f]{8}-[0-9a-f]{4}`).Draw(rt, "id")
+		prompt := rapid.String().Draw(rt, "prompt") + ">"
+		cmd := rapid.StringN(1, 80, -1).Draw(rt, "newPath") + " resume " + id
+		old := rapid.StringN(1, 80, -1).Draw(rt, "oldPath") + " resume " + id
+		if got := promptActionFor(prompt+cmd, id, cmd); got != leaveAlone {
+			rt.Fatalf("current command: got %v, want leaveAlone", got)
+		}
+		if strings.HasSuffix(prompt+old, cmd) {
+			return
+		}
+		if got := promptActionFor(prompt+old, id, cmd); got != replaceCommand {
+			rt.Fatalf("old command %q: got %v, want replaceCommand", prompt+old, got)
+		}
+	})
+}
+
 func TestPlanImport(t *testing.T) {
 	day := time.Date(2026, 9, 26, 12, 0, 0, 0, time.Local)
 	sessions := []session.Session{
@@ -112,7 +156,7 @@ func TestPlanImport(t *testing.T) {
 		{ID: "w4:p1"},
 	}}
 
-	got := planImport(sessions, st, snap, false)
+	got := planImport(sessions, st, snap, nil, false)
 	want := []importStep{
 		{kind: stepRetype, session: sessions[1], tab: importedTab{Tab: "w4:t1", Pane: "w4:p1"}},
 		{kind: stepCreate, session: sessions[2], workspace: "chats 09-25"},
@@ -122,9 +166,25 @@ func TestPlanImport(t *testing.T) {
 		t.Fatalf("planImport =\n%+v\nwant\n%+v", got, want)
 	}
 
-	refresh := planImport(sessions, st, snap, true)
+	refresh := planImport(sessions, st, snap, nil, true)
 	if len(refresh) != 1 || refresh[0].kind != stepRetype {
 		t.Fatalf("planImport with refresh = %+v, want only the retype step", refresh)
+	}
+}
+
+// TestPlanImportSkipsForkedSessions is the regression test for v0.1.1: a
+// herdr pane ran "claude --resume <id> --fork-session", and import still
+// made a second tab for <id>.
+func TestPlanImportSkipsForkedSessions(t *testing.T) {
+	sessions := []session.Session{{ID: "2d5b72c7-8fb9-4dad-9c7a-c2b1224a8644", LastActive: time.Now()}}
+	snap := herdr.Snapshot{Panes: []herdr.Pane{{ID: "w2:p1", Agent: "claude", AgentSession: &herdr.AgentSession{Value: "1a00dd3b-4912-405c-9d95-f07ae324d05b"}}}}
+	inPanes := map[string]bool{"--resume": true, "2d5b72c7-8fb9-4dad-9c7a-c2b1224a8644": true, "--fork-session": true}
+	st := state{Tabs: map[string]importedTab{}}
+	if steps := planImport(sessions, st, snap, inPanes, false); len(steps) != 0 {
+		t.Fatalf("planImport = %+v, want no step for a session that a pane runs as a copy", steps)
+	}
+	if steps := planImport(sessions, st, snap, nil, false); len(steps) != 1 {
+		t.Fatalf("without the pane arguments, planImport = %+v, want one new tab", steps)
 	}
 }
 

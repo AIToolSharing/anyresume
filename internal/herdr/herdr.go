@@ -254,9 +254,10 @@ func (c *Client) WaitOutput(pane, regex string, timeoutMS int) error {
 	return c.call(nil, "pane", "wait-output", pane, "--regex", regex, "--timeout", strconv.Itoa(timeoutMS))
 }
 
-// Read returns the last lines of the visible text of a pane.
+// Read returns the last lines of the recent text of a pane, with the soft
+// line wraps joined, so that a long command reads as one line.
 func (c *Client) Read(pane string, lines int) (string, error) {
-	b, err := c.run("pane", "read", pane, "--source", "visible", "--lines", strconv.Itoa(lines))
+	b, err := c.run("pane", "read", pane, "--source", "recent-unwrapped", "--lines", strconv.Itoa(lines))
 	return string(b), err
 }
 
