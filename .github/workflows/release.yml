@@ -1,0 +1,35 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # The plugin build downloads the binary of the manifest version, so the
+      # tag, the manifest version, and the download URLs must agree.
+      - name: Check the plugin manifest version
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          grep -q "^version = \"$v\"$" herdr-plugin.toml
+          test "$(grep -c "releases/download/v$v/" herdr-plugin.toml)" -eq 1
+          grep -q "fetch-binary.sh\", \"$v\"" herdr-plugin.toml
+      - name: Test
+        run: go test -count=1 ./...
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

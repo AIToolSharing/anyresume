@@ -1,0 +1,46 @@
+id = "aitoolsharing.anyresume"
+name = "anyresume"
+version = "0.1.0"
+min_herdr_version = "0.9.0"
+description = "Resume any Claude Code session from one list, in its own folder (unofficial)"
+platforms = ["linux", "macos", "windows"]
+
+# The build commands download the release binary of this version into bin/.
+# For a release, change the version in three places: the "version" line, the
+# Windows download URL, and the argument of fetch-binary.sh.
+[[build]]
+command = ["curl.exe", "-fsSL", "--create-dirs", "-o", "bin/anyresume.zip", "https://github.com/AIToolSharing/anyresume/releases/download/v0.1.0/anyresume_windows_amd64.zip"]
+platforms = ["windows"]
+
+[[build]]
+command = ["tar.exe", "-xf", "bin/anyresume.zip", "-C", "bin"]
+platforms = ["windows"]
+
+[[build]]
+command = ["sh", "scripts/fetch-binary.sh", "0.1.0"]
+platforms = ["linux", "macos"]
+
+# After herdr restores a session, type the resume command again in the tabs
+# that "import" made. herdr restores those tabs with empty prompts.
+[[startup]]
+command = ["bin/anyresume", "import", "--refresh"]
+
+[[actions]]
+id = "pick"
+title = "Resume a Claude Code session"
+contexts = ["workspace"]
+command = ["bin/anyresume", "popup"]
+
+[[actions]]
+id = "import"
+title = "Make a tab for every Claude Code session"
+contexts = ["workspace"]
+command = ["bin/anyresume", "import"]
+
+[[panes]]
+id = "picker"
+title = "Claude Code sessions"
+placement = "popup"
+width = "90%"
+height = "80%"
+command = ["bin/anyresume", "pick"]
