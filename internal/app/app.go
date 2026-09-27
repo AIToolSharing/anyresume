@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -39,10 +38,12 @@ whatever folder you start anyresume in.
 type env struct {
 	configDir  string
 	desktopDir string
-	statePath  string
-	herdr      *herdr.Client
-	stdout     io.Writer
-	stderr     io.Writer
+	// socket and statePath are set only in a herdr session.
+	socket    string
+	statePath string
+	herdr     *herdr.Client
+	stdout    io.Writer
+	stderr    io.Writer
 }
 
 // Run runs one command and returns the process exit code.
@@ -105,12 +106,26 @@ func newEnv() (*env, error) {
 	e := &env{
 		configDir:  configDir,
 		desktopDir: desktopDir,
-		statePath:  filepath.Join(userConfig, "anyresume", "herdr-tabs.json"),
 		stdout:     os.Stdout,
 		stderr:     os.Stderr,
 	}
-	if os.Getenv("HERDR_ENV") == "1" {
-		e.herdr = herdr.New()
+	if os.Getenv("HERDR_ENV") != "1" {
+		return e, nil
+	}
+	e.herdr = herdr.New()
+	// herdr gives panes and plugin commands the socket path of their
+	// session. anyresume keeps one record of imported tabs for each session.
+	e.socket = os.Getenv("HERDR_SOCKET_PATH")
+	if e.socket == "" {
+		return e, nil
+	}
+	e.statePath = statePath(userConfig, e.socket)
+	// HERDR_SESSION names a named session. The old single record belongs to
+	// the default session.
+	if os.Getenv("HERDR_SESSION") == "" {
+		if err := migrateLegacyState(legacyStatePath(userConfig), e.statePath); err != nil {
+			return nil, err
+		}
 	}
 	return e, nil
 }

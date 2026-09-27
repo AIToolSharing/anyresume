@@ -147,9 +147,11 @@ func (e *env) openInHerdr(s session.Session) error {
 	if h, ok := e.holders()[s.ID]; ok {
 		return heldError(s, h)
 	}
-	st, err := loadState(e.statePath)
-	if err != nil {
-		return err
+	st := state{Tabs: map[string]importedTab{}}
+	if e.statePath != "" {
+		if st, err = loadState(e.statePath); err != nil {
+			return err
+		}
 	}
 	if t, ok := st.Tabs[s.ID]; ok && snap.HasPane(t.Pane) {
 		if info, err := e.herdr.ProcessInfo(t.Pane); err == nil && info.Idle() {
@@ -255,8 +257,8 @@ func (e *env) importTabs(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if e.herdr == nil {
-		return errors.New("import needs herdr: run it in a herdr pane or as the plugin action")
+	if e.herdr == nil || e.statePath == "" {
+		return errors.New("import needs a herdr session: run it in a herdr pane or as the plugin action")
 	}
 	sessions, err := e.sessions()
 	if err != nil {
@@ -266,6 +268,7 @@ func (e *env) importTabs(args []string) error {
 	if err != nil {
 		return err
 	}
+	st.Socket = e.socket
 	snap, err := e.herdr.Snapshot()
 	if err != nil {
 		return err

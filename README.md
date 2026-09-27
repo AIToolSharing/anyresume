@@ -101,8 +101,9 @@ again to continue. `--limit N` makes at most N new tabs.
 
 herdr restores tabs with empty prompts after a restart. The plugin runs
 `anyresume import --refresh` at herdr startup, and that types the commands
-again. anyresume records the imported tabs in `herdr-tabs.json` in your user
-config folder.
+again. anyresume records the imported tabs of each herdr session in its own
+file, `anyresume/herdr-tabs-<id>.json` in your user config folder, because
+each session has its own tab IDs.
 
 ## Safety
 
