@@ -33,3 +33,30 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Run the build commands of herdr-plugin.toml as "herdr plugin install"
+  # runs them, and check that the downloaded binary starts.
+  plugin-build:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the Windows build command
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $line = (Select-String -Path herdr-plugin.toml -Pattern '^command = \["powershell"').Line
+          $argv = ($line -replace '^command = ', '') | ConvertFrom-Json
+          & $argv[0] $argv[1..($argv.Count - 1)]
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $got = & .\bin\anyresume.exe version
+          if ($got -ne "$env:GITHUB_REF_NAME".TrimStart('v')) { throw "version is '$got'" }
+      - name: Run the Linux and macOS build command
+        if: runner.os != 'Windows'
+        run: |
+          sh scripts/fetch-binary.sh "${GITHUB_REF_NAME#v}"
+          test "$(bin/anyresume version)" = "${GITHUB_REF_NAME#v}"
