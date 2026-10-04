@@ -173,6 +173,15 @@ func (e *env) openInHerdr(s session.Session) error {
 	if err != nil {
 		return err
 	}
+	if s.Agent != "" {
+		// herdr starts only Claude Code as an agent. Resume the others in
+		// the shell of the tab.
+		cmd, err := resumeCommand(s.ID)
+		if err != nil {
+			return err
+		}
+		return e.herdr.Run(c.Pane, cmd)
+	}
 	fmt.Fprintf(e.stderr, "Opening %q. A long session can take a minute.\n", cleanTitle(s.Title))
 	err = e.herdr.StartAgent(agentName(s), c.Pane, 180000, s.ResumeArgs())
 	var he *herdr.Error

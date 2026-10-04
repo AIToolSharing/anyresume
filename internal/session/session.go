@@ -24,6 +24,29 @@ type Session struct {
 	Model          string `json:"model,omitempty"`
 	Effort         string `json:"effort,omitempty"`
 	PermissionMode string `json:"permissionMode,omitempty"`
+	// Agent is the program of the session: "" for Claude Code, or Codex,
+	// Copilot, or Antigravity.
+	Agent string `json:"agent,omitempty"`
+}
+
+// The agents other than Claude Code.
+const (
+	Codex       = "codex"
+	Copilot     = "copilot"
+	Antigravity = "agy"
+)
+
+// Argv returns the command that resumes s: the program and its arguments.
+func (s Session) Argv() []string {
+	switch s.Agent {
+	case Codex:
+		return []string{"codex", "resume", s.ID}
+	case Copilot:
+		return []string{"copilot", "--resume=" + s.ID}
+	case Antigravity:
+		return []string{"agy", "--conversation", s.ID}
+	}
+	return append([]string{"claude"}, s.ResumeArgs()...)
 }
 
 // Discover returns every session that has messages, newest first.

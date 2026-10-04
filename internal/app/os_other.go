@@ -3,7 +3,7 @@
 package app
 
 import (
-	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,16 +14,16 @@ import (
 // fish.
 const clearLineKey = "ctrl+u"
 
-// runClaude replaces this process with claude, started in dir.
-func runClaude(dir string, args []string) error {
-	path, err := exec.LookPath("claude")
+// runAgent replaces this process with the program argv[0], started in dir.
+func runAgent(dir string, argv []string) error {
+	path, err := exec.LookPath(argv[0])
 	if err != nil {
-		return errors.New("claude is not on PATH")
+		return fmt.Errorf("%s is not on PATH", argv[0])
 	}
 	if err := os.Chdir(dir); err != nil {
 		return err
 	}
-	return syscall.Exec(path, append([]string{"claude"}, args...), os.Environ())
+	return syscall.Exec(path, argv, os.Environ())
 }
 
 // quoteExe returns path in single quotes for a POSIX shell.
