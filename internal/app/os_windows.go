@@ -18,23 +18,24 @@ import (
 // PowerShell.
 const clearLineKey = "esc"
 
-// runClaude runs claude with the arguments in dir and waits for it.
-func runClaude(dir string, args []string) error {
-	path, err := exec.LookPath("claude")
+// runAgent runs the program argv[0] with its arguments in dir and waits for
+// it.
+func runAgent(dir string, argv []string) error {
+	path, err := exec.LookPath(argv[0])
 	if err != nil {
-		return errors.New("claude is not on PATH")
+		return fmt.Errorf("%s is not on PATH", argv[0])
 	}
-	cmd := exec.Command(path, args...)
+	cmd := exec.Command(path, argv[1:]...)
 	cmd.Dir = dir
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	// Claude Code handles Ctrl+C itself. anyresume ignores it and waits
-	// until Claude Code exits.
+	// The agent handles Ctrl+C itself. anyresume ignores it and waits until
+	// the agent exits.
 	signal.Ignore(os.Interrupt)
 	defer signal.Reset(os.Interrupt)
 	err = cmd.Run()
 	var exit *exec.ExitError
 	if errors.As(err, &exit) {
-		return fmt.Errorf("claude exited with code %d", exit.ExitCode())
+		return fmt.Errorf("%s exited with code %d", argv[0], exit.ExitCode())
 	}
 	return err
 }

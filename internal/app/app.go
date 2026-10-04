@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -130,8 +131,20 @@ func newEnv() (*env, error) {
 	return e, nil
 }
 
+// sessions returns the Claude Code sessions and the Codex, Copilot CLI, and
+// Antigravity sessions of this user, newest first.
 func (e *env) sessions() ([]session.Session, error) {
-	return session.Discover(e.configDir, e.desktopDir)
+	s, err := session.Discover(e.configDir, e.desktopDir)
+	if err != nil {
+		return nil, err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	s = append(s, session.DiscoverOthers(home)...)
+	sort.SliceStable(s, func(i, j int) bool { return s[i].LastActive.After(s[j].LastActive) })
+	return s, nil
 }
 
 // holders returns the live holders of sessions. The registry is optional:
@@ -265,7 +278,7 @@ func (e *env) resumeHere(s session.Session) error {
 	if h, ok := e.holders()[s.ID]; ok {
 		return heldError(s, h)
 	}
-	return runClaude(sessionDir(s), s.ResumeArgs())
+	return runAgent(sessionDir(s), s.Argv())
 }
 
 // sessionDir returns the folder of s. When the folder is gone, it returns
